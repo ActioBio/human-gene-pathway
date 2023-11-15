@@ -93,3 +93,4 @@ target/
 vignettes/*.html
 vignettes/*.pdf
 
+.DS_Store
