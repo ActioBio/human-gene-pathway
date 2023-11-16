@@ -1,70 +1,45 @@
 import csv
-import collections
-import json
-import requests
 import pandas as pd
 import gzip
 from typing import Dict
 
-def fetch_data(url, dtype=None):
-    return pd.read_table(url, dtype=dtype)
-
-def fetch_json(url):
-    return json.loads(requests.get(url).text)
-
 def read_gmt(path):
     with open(path) as read_file:
-        reader = csv.reader(read_file, delimiter='\t')
-        for row in reader:
-            if row:
-                yield row[0], row[1], set(row[2:])
+        return [(row[0], row[1], set(row[2:])) for row in csv.reader(read_file, delimiter='\t') if row]
 
 def parse_description(description):
-    return dict(item.partition(': ')[::2] for item in description.split('; '))
+    return dict(item.split(': ', 1) for item in description.split('; ') if ': ' in item)
 
-def process_pathways(path: str, symbol_to_entrez: Dict[str, str]) -> pd.DataFrame:
-    rows = []
-    PC_Row = collections.namedtuple('PC_Row', ['identifier', 'name', 'url', 'source', 'genes'])
+def process_pathwaycommons_data(path: str, symbol_to_entrez: Dict[str, str]) -> pd.DataFrame:
+    return pd.DataFrame([
+        {
+            'identifier': url.rsplit('/', 1)[-1],
+            'name': parse_description(description).get('name'),
+            'url': url,
+            'genes': {symbol_to_entrez[gene] for gene in genes if gene in symbol_to_entrez}
+        }
+        for url, description, genes in read_gmt(path) 
+        if {gene for gene in genes if gene in symbol_to_entrez}
+    ])
 
-    for url, description, genes in read_gmt(path):
-        genes = {symbol_to_entrez.get(gene) for gene in genes if symbol_to_entrez.get(gene) is not None}
+def process_wikipathways_data(gmt_data, human_genes):
+    wikipath_df = pd.DataFrame(gmt_data, columns=['name', 'description', 'genes'])
+    wikipath_df['name'] = wikipath_df['name'].str.split('%').str[0]
+    wikipath_df['genes'] = wikipath_df['genes'].apply(lambda genes: genes & human_genes)
+    return wikipath_df[wikipath_df['genes'].astype(bool)]
 
-        if genes:
-            identifier = url.rsplit('/', 1)[-1]
-            desc_dict = parse_description(description)
-            rows.append(PC_Row(identifier, desc_dict.get('name'), url, desc_dict.get('datasource'), genes))
-
-    return pd.DataFrame(rows)
-
-def process_wikipathways_data(gmt_generator, human_genes):
-    wikipath_df = pd.DataFrame(gmt_generator, columns=['name', 'description', 'genes'])
-    wikipath_df.name = wikipath_df.name.map(lambda x: x.split('%')[0])
-    for genes in wikipath_df.genes:
-        genes &= human_genes
-    return wikipath_df[wikipath_df.genes.map(bool)]
-
-def create_combined_df(pc_df, wikipath_df, human_coding_genes):
-    wikipath_df['identifier'] = wikipath_df['description'].str.rsplit('/', n=1).str[-1]
-    wikipath_df['url'] = wikipath_df['description']
-    wikipath_df['source'] = 'wikipathways'
-    wikipath_df['license'] = 'CC BY 3.0'
-
-    combined_df = pd.concat([wikipath_df, pc_df], ignore_index=True)
-    combined_df = combined_df.drop_duplicates(subset=['genes'])
-    combined_df['genes'] = combined_df['genes'].apply(frozenset)
+def create_combined_df(pc_df, wikipath_df):
+    wikipath_df = wikipath_df.assign(
+        identifier = wikipath_df['description'].str.rsplit('/', n=1).str[-1],
+        url = wikipath_df['description']
+    )
+    combined_df = pd.concat([wikipath_df, pc_df], ignore_index=True).drop_duplicates('genes')
     combined_df['n_genes'] = combined_df['genes'].apply(len)
-    combined_df['coding_genes'] = combined_df['genes'].apply(lambda genes: genes & human_coding_genes)
-    combined_df['n_coding_genes'] = combined_df['coding_genes'].apply(len)
-
-    column_order = ['identifier', 'name', 'url', 'n_genes', 'n_coding_genes', 'source', 'license', 'genes', 'coding_genes']
-    return combined_df[column_order].sort_values(by='identifier')
+    return combined_df[['identifier', 'name', 'url', 'n_genes', 'genes']].sort_values('identifier')
 
 def write_to_tsv(dataframe, filepath):
-    write_df = dataframe.copy()
-    join = lambda x: '|'.join(map(str, sorted(x)))
-    for column in ['genes', 'coding_genes']:
-        write_df[column] = write_df[column].map(join)
-    write_df.to_csv(filepath, index=False, sep='\t')
+    dataframe['genes'] = dataframe['genes'].apply(lambda x: '|'.join(map(str, sorted(x))))
+    dataframe.to_csv(filepath, index=False, sep='\t')
 
 def main():
     gene_info_path = 'data/input/Homo_sapiens.gene_info.gz'
@@ -72,19 +47,13 @@ def main():
         gene_df = pd.read_csv(file, delimiter='\t')
 
     human_genes = set(gene_df['GeneID'].astype(str))
-    human_coding_genes = set(gene_df[gene_df['type_of_gene'] == 'protein-coding']['GeneID'].astype(str))
-
-    # Create symbol to Entrez Gene mapping
     symbol_to_entrez = dict(zip(gene_df['Symbol'], gene_df['GeneID'].astype(str)))
 
-    # Process Pathway Commons data
-    pc_df = process_pathways("data/input/PathwayCommons12.All.hgnc.gmt", symbol_to_entrez)
+    pc_df = process_pathwaycommons_data("data/input/PathwayCommons12.All.hgnc.gmt", symbol_to_entrez)
+    gmt_data = read_gmt('data/input/wikipathways-Homo_sapiens.gmt')
+    wikipath_df = process_wikipathways_data(gmt_data, human_genes)
 
-    # Process WikiPathways data
-    gmt_generator = read_gmt('data/input/wikipathways-Homo_sapiens.gmt')
-    wikipath_df = process_wikipathways_data(gmt_generator, human_genes)
-
-    pathway_df = create_combined_df(pc_df, wikipath_df, human_coding_genes)
+    pathway_df = create_combined_df(pc_df, wikipath_df)
     write_to_tsv(pathway_df, 'data/output/pathways.tsv')
 
 if __name__ == "__main__":
