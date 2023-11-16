@@ -43,22 +43,20 @@ def process_wikipathways_data(gmt_generator, human_genes):
     return wikipath_df[wikipath_df.genes.map(bool)]
 
 def create_combined_df(pc_df, wikipath_df, human_coding_genes):
-    wikipath_df = pd.DataFrame({
-        'identifier': wikipath_df['description'].map(lambda x: x.rsplit('/', 1)[1]),
-        'name': wikipath_df['name'],
-        'url': wikipath_df['description'],
-        'source': 'wikipathways',
-        'license': 'CC BY 3.0',
-        'genes': wikipath_df.genes
-    })
-    pathway_df = pd.concat([wikipath_df, pc_df])
-    pathway_df = pathway_df[['identifier', 'name', 'url', 'source', 'license', 'genes']]
-    pathway_df.genes = pathway_df.genes.map(frozenset)
-    pathway_df = pathway_df.drop_duplicates(['genes'])
-    pathway_df['coding_genes'] = pathway_df.genes.map(lambda x: x & human_coding_genes)
-    pathway_df.insert(3, 'n_genes', pathway_df.genes.map(len))
-    pathway_df.insert(4, 'n_coding_genes', pathway_df.coding_genes.map(len))
-    return pathway_df.sort_values('identifier')
+    wikipath_df['identifier'] = wikipath_df['description'].str.rsplit('/', n=1).str[-1]
+    wikipath_df['url'] = wikipath_df['description']
+    wikipath_df['source'] = 'wikipathways'
+    wikipath_df['license'] = 'CC BY 3.0'
+
+    combined_df = pd.concat([wikipath_df, pc_df], ignore_index=True)
+    combined_df = combined_df.drop_duplicates(subset=['genes'])
+    combined_df['genes'] = combined_df['genes'].apply(frozenset)
+    combined_df['n_genes'] = combined_df['genes'].apply(len)
+    combined_df['coding_genes'] = combined_df['genes'].apply(lambda genes: genes & human_coding_genes)
+    combined_df['n_coding_genes'] = combined_df['coding_genes'].apply(len)
+
+    column_order = ['identifier', 'name', 'url', 'n_genes', 'n_coding_genes', 'source', 'license', 'genes', 'coding_genes']
+    return combined_df[column_order].sort_values(by='identifier')
 
 def write_to_tsv(dataframe, filepath):
     write_df = dataframe.copy()
