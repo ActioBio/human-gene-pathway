@@ -3,6 +3,7 @@ import collections
 import json
 import requests
 import pandas as pd
+import gzip
 from typing import Dict
 
 def fetch_data(url, dtype=None):
@@ -66,19 +67,20 @@ def write_to_tsv(dataframe, filepath):
     write_df.to_csv(filepath, index=False, sep='\t')
 
 def main():
-    # Fetching Entrez Gene data
-    entrez_df = fetch_data('https://raw.githubusercontent.com/dhimmel/entrez-gene/a7362748a34211e5df6f2d185bb3246279760546/data/genes-human.tsv', {'GeneID': str})
-    human_genes = set(entrez_df.GeneID)
-    human_coding_genes = set(entrez_df[entrez_df.type_of_gene == 'protein-coding'].GeneID)
+    gene_info_path = 'data/input/Homo_sapiens.gene_info.gz'
+    with gzip.open(gene_info_path, 'rt') as file:
+        gene_df = pd.read_csv(file, delimiter='\t')
 
-    # Fetching symbol to Entrez Gene mapping
-    symbol_to_entrez = fetch_json('https://raw.githubusercontent.com/dhimmel/entrez-gene/a7362748a34211e5df6f2d185bb3246279760546/data/symbol-map.json')
-    symbol_to_entrez = {k: str(v) for k, v in symbol_to_entrez.items()}
+    human_genes = set(gene_df['GeneID'].astype(str))
+    human_coding_genes = set(gene_df[gene_df['type_of_gene'] == 'protein-coding']['GeneID'].astype(str))
 
-    # Processing Pathway Commons data
+    # Create symbol to Entrez Gene mapping
+    symbol_to_entrez = dict(zip(gene_df['Symbol'], gene_df['GeneID'].astype(str)))
+
+    # Process Pathway Commons data
     pc_df = process_pathways("data/input/PathwayCommons12.All.hgnc.gmt", symbol_to_entrez)
 
-    # Processing WikiPathways data
+    # Process WikiPathways data
     gmt_generator = read_gmt('data/input/wikipathways-Homo_sapiens.gmt')
     wikipath_df = process_wikipathways_data(gmt_generator, human_genes)
 
