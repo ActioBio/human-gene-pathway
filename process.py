@@ -3,6 +3,7 @@ import collections
 import json
 import requests
 import pandas as pd
+from typing import Dict
 
 def fetch_data(url, dtype=None):
     return pd.read_table(url, dtype=dtype)
@@ -20,16 +21,18 @@ def read_gmt(path):
 def parse_description(description):
     return dict(item.partition(': ')[::2] for item in description.split('; '))
 
-def process_pathways(path, symbol_to_entrez):
+def process_pathways(path: str, symbol_to_entrez: Dict[str, str]) -> pd.DataFrame:
     rows = []
     PC_Row = collections.namedtuple('PC_Row', ['identifier', 'name', 'url', 'source', 'genes'])
-    for identifier, description, genes in read_gmt(path):
-        desc_dict = parse_description(description)
-        genes = {symbol_to_entrez.get(gene) for gene in genes}
-        genes.discard(None)
+
+    for url, description, genes in read_gmt(path):
+        genes = {symbol_to_entrez.get(gene) for gene in genes if symbol_to_entrez.get(gene) is not None}
+
         if genes:
-            rows.append(PC_Row(f'PC12_{len(rows) + 1}', desc_dict.get('name'), identifier, desc_dict.get('datasource'), genes))
-            print(rows[-1])
+            identifier = url.rsplit('/', 1)[-1]
+            desc_dict = parse_description(description)
+            rows.append(PC_Row(identifier, desc_dict.get('name'), url, desc_dict.get('datasource'), genes))
+
     return pd.DataFrame(rows)
 
 def process_wikipathways_data(gmt_generator, human_genes):
