@@ -22,13 +22,14 @@ def parse_description(description):
 
 def process_pathways(path, symbol_to_entrez):
     rows = []
-    PC_Row = collections.namedtuple('PC_Row', ['identifier', 'name', 'source', 'genes'])
+    PC_Row = collections.namedtuple('PC_Row', ['identifier', 'name', 'url', 'source', 'genes'])
     for identifier, description, genes in read_gmt(path):
         desc_dict = parse_description(description)
         genes = {symbol_to_entrez.get(gene) for gene in genes}
         genes.discard(None)
         if genes:
-            rows.append(PC_Row(f'PC12_{len(rows) + 1}', desc_dict.get('name'), desc_dict.get('datasource'), genes))
+            rows.append(PC_Row(f'PC12_{len(rows) + 1}', desc_dict.get('name'), identifier, desc_dict.get('datasource'), genes))
+            print(rows[-1])
     return pd.DataFrame(rows)
 
 def process_wikipathways_data(gmt_generator, human_genes):
