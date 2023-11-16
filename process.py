@@ -55,7 +55,7 @@ def main():
     wikipath_df = process_wikipathways_data(gmt_data, human_genes)
 
     pathway_df = create_combined_df(pc_df, wikipath_df)
-    write_to_tsv(pathway_df, 'data/output/pathways.tsv')
+    write_to_tsv(pathway_df, 'data/output/human-gene-pathway.tsv')
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,4 @@
-name: pathways
+name: human-gene-pathway
 channels:
   - conda-forge
   - defaults
