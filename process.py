@@ -4,7 +4,12 @@ import gzip
 from typing import Dict
 
 def read_gmt(path):
-    with open(path) as read_file:
+    if path.endswith('.gz'):
+        open_func = gzip.open
+    else:
+        open_func = open
+
+    with open_func(path, 'rt') as read_file:
         return [(row[0], row[1], set(row[2:])) for row in csv.reader(read_file, delimiter='\t') if row]
 
 def parse_description(description):
@@ -50,7 +55,7 @@ def main():
     human_genes = set(gene_df['GeneID'])
     symbol_to_entrez = dict(zip(gene_df['Symbol'], gene_df['GeneID']))
 
-    pc_df = process_pathwaycommons_data("data/input/PathwayCommons12.All.hgnc.gmt", symbol_to_entrez)
+    pc_df = process_pathwaycommons_data("data/input/PathwayCommons12.All.hgnc.gmt.gz", symbol_to_entrez)
     gmt_data = read_gmt('data/input/wikipathways-Homo_sapiens.gmt')
     wikipath_df = process_wikipathways_data(gmt_data, human_genes)
 
