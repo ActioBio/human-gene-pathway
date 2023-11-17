@@ -13,11 +13,11 @@ def read_gmt(path: str):
 def parse_description(description: str):
     return dict(item.split(': ', 1) for item in description.split('; ') if ': ' in item)
 
-def process_pathway_data(path: str, symbol_to_entrez: Dict[str, int]) -> pd.DataFrame:
+def process_pathwaycommons_data(path: str, symbol_to_entrez: Dict[str, int]) -> pd.DataFrame:
     data = []
 
     for url, description, genes in read_gmt(path):
-        filtered_genes = {symbol_to_entrez.get(gene) for gene in genes} - {None}
+        filtered_genes = sorted({symbol_to_entrez.get(gene) for gene in genes} - {None})
 
         if any(gene in symbol_to_entrez for gene in genes):
             data.append({
@@ -29,10 +29,10 @@ def process_pathway_data(path: str, symbol_to_entrez: Dict[str, int]) -> pd.Data
 
     return pd.DataFrame(data)
 
-def process_wikipathways_data(gmt_data, human_genes: set):
-    wikipath_df = pd.DataFrame(gmt_data, columns=['name', 'description', 'genes'])
+def process_wikipathways_data(wikipathways_data, human_genes: set):
+    wikipath_df = pd.DataFrame(wikipathways_data, columns=['name', 'description', 'genes'])
     wikipath_df['name'] = wikipath_df['name'].str.split('%').str[0]
-    wikipath_df['genes'] = wikipath_df['genes'].apply(lambda genes: {int(gene) for gene in genes} & human_genes)
+    wikipath_df['genes'] = wikipath_df['genes'].apply(lambda genes: sorted({int(gene) for gene in genes} & human_genes))
     
     return wikipath_df[wikipath_df['genes'].astype(bool)]
 
@@ -43,9 +43,8 @@ def create_combined_df(pc_df, wikipath_df):
     )
 
     combined_df = pd.concat([wikipath_df, pc_df], ignore_index=True).drop_duplicates('genes')
-    combined_df['n_genes'] = combined_df['genes'].apply(len)
     
-    return combined_df[['identifier', 'name', 'url', 'n_genes', 'genes']].sort_values('identifier')
+    return combined_df[['identifier', 'name', 'url', 'genes']].sort_values('identifier')
 
 def write_to_node_csv(dataframe: pd.DataFrame, filepath: str) -> None:
     dataframe[['identifier', 'name', 'url']].to_csv(filepath, index=False)
@@ -55,9 +54,7 @@ def write_to_edge_csv(dataframe: pd.DataFrame, filepath: str) -> None:
 
     for _, row in dataframe.iterrows():
         pathway_id = row['identifier']
-        genes = row['genes'].split('|')
-
-        for gene_id in genes:
+        for gene_id in row['genes']:
             edge_data.append({'source_id': gene_id, 'target_id': pathway_id})
 
     edges_df = pd.DataFrame(edge_data)
@@ -72,14 +69,14 @@ def main():
     human_genes = set(gene_df['GeneID'])
     symbol_to_entrez = dict(zip(gene_df['Symbol'], gene_df['GeneID']))
 
-    pc_df = process_pathway_data("data/input/PathwayCommons12.All.hgnc.gmt.gz", symbol_to_entrez)
-    gmt_data = read_gmt('data/input/wikipathways-Homo_sapiens.gmt')
-    wikipath_df = process_wikipathways_data(gmt_data, human_genes)
+    pathwaycommons_df = process_pathwaycommons_data("data/input/PathwayCommons12.All.hgnc.gmt.gz", symbol_to_entrez)
+    wikipathways_data = read_gmt('data/input/wikipathways-Homo_sapiens.gmt')
+    wikipath_df = process_wikipathways_data(wikipathways_data, human_genes)
 
-    pathway_df = create_combined_df(pc_df, wikipath_df)
+    combined_pathway_df = create_combined_df(pathwaycommons_df, wikipath_df)
     
-    write_to_node_csv(pathway_df, 'data/output/node_Pathway.csv.gz')
-    write_to_edge_csv(pathway_df, 'data/output/edge_Gene_participatesIn_Pathway.csv.gz')
+    write_to_node_csv(combined_pathway_df, 'data/output/node_Pathway.csv')
+    write_to_edge_csv(combined_pathway_df, 'data/output/edge_Gene_participatesIn_Pathway.csv')
 
 if __name__ == "__main__":
     main()
