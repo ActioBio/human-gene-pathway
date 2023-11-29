@@ -4,6 +4,26 @@ import gzip
 from typing import Dict
 from pathlib import Path
 
+GENE_DATA_FILE = "data/input/protein_coding_gene.csv"
+PATHWAYCOMMONS_FILE = "data/input/PathwayCommons12.All.hgnc.gmt.gz"
+WIKIPATHWAYS_FILE = "data/input/wikipathways-Homo_sapiens.gmt"
+NODE_OUTPUT_FILE = "data/output/csv/node_Pathway.csv"
+EDGE_OUTPUT_FILE = "data/output/csv/edge_Gene_participatesIn_Pathway.csv"
+
+def load_gene_data_from_csv(file_path):
+    gene_ids_set = set()
+    gene_symbol_to_id_map = {}
+
+    with open(file_path, 'r') as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            gene_id = row['GeneID']
+            gene_symbol = row['Symbol']
+            gene_ids_set.add(gene_id)
+            gene_symbol_to_id_map[gene_symbol] = gene_id
+
+    return gene_ids_set, gene_symbol_to_id_map
+
 def read_gmt(path: str):
     open_func = gzip.open if path.endswith('.gz') else open
 
@@ -13,13 +33,13 @@ def read_gmt(path: str):
 def parse_description(description: str):
     return dict(item.split(': ', 1) for item in description.split('; ') if ': ' in item)
 
-def process_pathwaycommons_data(path: str, symbol_to_entrez: Dict[str, int]) -> pd.DataFrame:
+def process_pathwaycommons_data(path: str, gene_symbol_to_id_map: Dict[str, int]) -> pd.DataFrame:
     data = []
 
     for url, description, genes in read_gmt(path):
-        filtered_genes = sorted({symbol_to_entrez.get(gene) for gene in genes} - {None})
+        filtered_genes = sorted({gene_symbol_to_id_map.get(gene) for gene in genes} - {None})
 
-        if any(gene in symbol_to_entrez for gene in genes):
+        if any(gene in gene_symbol_to_id_map for gene in genes):
             data.append({
                 'identifier': Path(url).stem,
                 'name': parse_description(description).get('name'),
@@ -29,10 +49,10 @@ def process_pathwaycommons_data(path: str, symbol_to_entrez: Dict[str, int]) -> 
 
     return pd.DataFrame(data)
 
-def process_wikipathways_data(wikipathways_data, human_genes: set):
+def process_wikipathways_data(wikipathways_data, gene_ids_set: set):
     wikipath_df = pd.DataFrame(wikipathways_data, columns=['name', 'description', 'genes'])
     wikipath_df['name'] = wikipath_df['name'].str.split('%').str[0]
-    wikipath_df['genes'] = wikipath_df['genes'].apply(lambda genes: sorted({int(gene) for gene in genes} & human_genes))
+    wikipath_df['genes'] = wikipath_df['genes'].apply(lambda genes: sorted({int(gene) for gene in genes} & gene_ids_set))
     
     return wikipath_df[wikipath_df['genes'].astype(bool)]
 
@@ -61,22 +81,16 @@ def write_to_edge_csv(dataframe: pd.DataFrame, filepath: str) -> None:
     edges_df.to_csv(filepath, index=False)
 
 def main():
-    gene_info_path = 'data/input/Homo_sapiens.gene_info.gz'
-    
-    with gzip.open(gene_info_path, 'rt') as file:
-        gene_df = pd.read_csv(file, delimiter='\t')
+    gene_ids_set, gene_symbol_to_id_map = load_gene_data_from_csv(GENE_DATA_FILE)
 
-    human_genes = set(gene_df['GeneID'])
-    symbol_to_entrez = dict(zip(gene_df['Symbol'], gene_df['GeneID']))
-
-    pathwaycommons_df = process_pathwaycommons_data("data/input/PathwayCommons12.All.hgnc.gmt.gz", symbol_to_entrez)
-    wikipathways_data = read_gmt('data/input/wikipathways-Homo_sapiens.gmt')
-    wikipath_df = process_wikipathways_data(wikipathways_data, human_genes)
+    pathwaycommons_df = process_pathwaycommons_data(PATHWAYCOMMONS_FILE, gene_symbol_to_id_map)
+    wikipathways_data = read_gmt(WIKIPATHWAYS_FILE)
+    wikipath_df = process_wikipathways_data(wikipathways_data, gene_ids_set)
 
     combined_pathway_df = create_combined_df(pathwaycommons_df, wikipath_df)
     
-    write_to_node_csv(combined_pathway_df, 'data/output/node_Pathway.csv')
-    write_to_edge_csv(combined_pathway_df, 'data/output/edge_Gene_participatesIn_Pathway.csv')
+    write_to_node_csv(combined_pathway_df, NODE_OUTPUT_FILE)
+    write_to_edge_csv(combined_pathway_df, EDGE_OUTPUT_FILE)
 
 if __name__ == "__main__":
     main()

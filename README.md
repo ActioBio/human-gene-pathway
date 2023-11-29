@@ -16,14 +16,14 @@ python process.py
 
 ### Input
 
+- protein_coding_gene.csv
+  - The file is a CSV containing extracted data on protein-coding genes from the NCBI dataset.
 - wikipathways-Homo_sapiens.gmt
   - Downloaded from the WikiPathways database, this file contains curated biological pathways for Homo sapiens (humans). Each entry includes pathway information such as gene sets associated with specific biological processes or diseases.
   - WikiPathways is an open-source platform that offers manually curated biological pathways. 
 - PathwayCommons12.All.hgnc.gmt
   - This file from Pathway Commons provides comprehensive pathway data, including gene interactions and pathway information.
   - PathwayCommons is a comprehensive collection of pathways from multiple databases. 
-- Homo_sapiens.gene_info.gz
-  - The file from NCBI is a compressed archive containing detailed information on genes.
 
 ### Output
 - node_Pathway.csv.gz

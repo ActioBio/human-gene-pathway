@@ -4,5 +4,5 @@ wget -O data/input/wikipathways-Homo_sapiens.gmt $(curl -s https://data.wikipath
 # Download Pathway Commons v12
 wget --timestamping --directory-prefix data/input/ https://www.pathwaycommons.org/archives/PC2/v12/PathwayCommons12.All.hgnc.gmt.gz
 
-# Download the Human gene_info.gz file of Entrez Genes
-wget --timestamping --directory-prefix data/input/ ftp://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz
+# Download NCBI Entrez protein-coding Genes
+wget --timestamping --directory-prefix data/input/ https://raw.githubusercontent.com/nickzren/human-gene/main/data/output/protein_coding_gene.csv
